@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CUSTOMER DIGITAL | Dashboard Real-Time</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg: #0F172A;
+            --card-bg: #1E293B;
+            --text: #F8FAFC;
+            --color-prog-bg: rgba(30, 58, 138, 0.4);
+            --color-prog-border: #3B82F6;
+            --color-fat: #22C55E;
+            --color-adr: #F59E0B;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg);
+            margin: 0; padding: 20px;
+            color: var(--text);
+        }
+
+        header {
+            display: flex; justify-content: space-between; align-items: center;
+            background: linear-gradient(135deg, #064E3B 0%, #065F46 100%);
+            padding: 15px 30px; border-radius: 12px; margin-bottom: 20px;
+        }
+
+        .btn-group { display: flex; gap: 10px; }
+        .btn {
+            padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer;
+            font-weight: 700; transition: 0.3s;
+        }
+        .btn-upload { background: var(--color-fat); color: #000; }
+        .btn-export { background: #fff; color: #000; }
+        .btn-pdf { background: #3B82F6; color: #fff; }
+
+        .filter-container {
+            display: flex; gap: 20px; background: var(--card-bg);
+            padding: 15px; border-radius: 12px; margin-bottom: 20px;
+        }
+
+        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        .card { background: var(--card-bg); padding: 25px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); }
+        .full { grid-column: span 2; }
+        
+        h3 { color: #94A3B8; font-size: 13px; text-transform: uppercase; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
+        h3::before { content: ""; width: 4px; height: 16px; background: var(--color-fat); border-radius: 2px; }
+
+        .chart-container { height: 320px; width: 100%; position: relative; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { text-align: left; padding: 12px; color: #94A3B8; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        td { padding: 12px; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        
+        /* ESTILO DETALHAMENTO CONFORME IMAGEM */
+        .td-cidade { color: var(--color-fat); font-weight: 800; text-transform: uppercase; }
+        .td-cooperado { color: #E2E8F0; }
+        .td-agendado { color: var(--color-adr); font-weight: 800; }
+
+        #modalDetails {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.98); z-index: 1000; backdrop-filter: blur(10px);
+        }
+        .modal-content {
+            background: var(--card-bg); width: 95%; margin: 2% auto;
+            padding: 30px; border-radius: 16px; max-height: 90vh; overflow-y: auto; border: 1px solid var(--color-fat);
+        }
+
+        @media print { .btn-group, .filter-container, #modalDetails { display: none !important; } }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1 style="margin:0; font-size:22px;">CUSTOMER <span style="color:var(--color-fat)">DIGITAL</span></h1>
+        <div class="btn-group">
+            <label for="excelFile" class="btn btn-upload">📁 Importar Excel</label>
+            <input type="file" id="excelFile" style="display:none" accept=".xlsx, .xls">
+            <button class="btn btn-export" onclick="exportarExcel()">📊 Exportar Excel</button>
+            <button class="btn btn-pdf" onclick="window.print()">📄 Gerar PDF</button>
+        </div>
+    </header>
+
+    <div class="filter-container">
+        <select id="selMes" onchange="filtrar()" style="padding:10px; border-radius:8px; background:#0F172A; color:#fff; border:1px solid #334155; min-width:180px;">
+            <option value="">Todos os Meses</option>
+        </select>
+        <select id="selSemana" onchange="filtrar()" style="padding:10px; border-radius:8px; background:#0F172A; color:#fff; border:1px solid #334155; min-width:180px;">
+            <option value="">Todas as Semanas</option>
+        </select>
+    </div>
+
+    <div class="grid">
+        <div class="card"><h3>1- Volume por Cliente (Ton)</h3><div class="chart-container"><canvas id="chartCli"></canvas></div></div>
+        <div class="card"><h3>2- Volume por Planta (Ton)</h3><div class="chart-container"><canvas id="chartPla"></canvas></div></div>
+        <div class="card"><h3>3- Visão por Incoterm e Aderência %</h3><div class="chart-container"><canvas id="chartInc"></canvas></div></div>
+        <div class="card"><h3>4- Volume por Gerente (Ton)</h3><div class="chart-container"><canvas id="chartGer"></canvas></div></div>
+        <div class="card full"><h3>5- Volume por Material (Ton)</h3><div class="chart-container"><canvas id="chartMat"></canvas></div></div>
+        
+        <div class="card full">
+            <h3>6- Tabela de Aderência Detalhada</h3>
+            <table id="resumoTable">
+                <thead>
+                    <tr><th>Categoria (Cliente)</th><th>Programado (Ton)</th><th>Faturado (Ton)</th><th>Saldo</th><th>Aderência %</th></tr>
+                </thead>
+                <tbody id="resumoBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="modalDetails">
+        <div class="modal-content">
+            <button onclick="document.getElementById('modalDetails').style.display='none'" style="float:right; background:none; border:none; color:var(--color-fat); font-size:32px; cursor:pointer">&times;</button>
+            <h2 id="modalTitle" style="color:var(--color-fat); margin-top:0; font-weight:800">Detalhamento</h2>
+            <div style="overflow-x:auto">
+                <table id="drillTable">
+                    <thead>
+                        <tr><th>Cliente</th><th>Cidade</th><th>Nome do Cooperado</th><th>Contrato</th><th>OV</th><th>Material</th><th>Programado</th><th>Agendado</th><th>Faturado</th></tr>
+                    </thead>
+                    <tbody id="drillBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        Chart.register(ChartDataLabels);
+        let rawData = [];
+        let dataFiltrada = [];
+        let charts = {};
+
+        document.getElementById('excelFile').addEventListener('change', function(e) {
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                const workbook = XLSX.read(evt.target.result, { type: 'binary' });
+                const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
+                rawData = json.map(r => ({ 
+                    ...r, 
+                    _sem: String(r[Object.keys(r)[0]]).trim(), 
+                    _mes: String(r[Object.keys(r)[1]]).trim() 
+                }));
+                popularFiltros();
+                filtrar();
+            };
+            reader.readAsBinaryString(e.target.files[0]);
+        });
+
+        function popularFiltros() {
+            const meses = [...new Set(rawData.map(r => r._mes))].filter(Boolean).sort();
+            const semanas = [...new Set(rawData.map(r => r._sem))].filter(Boolean).sort();
+            document.getElementById('selMes').innerHTML = '<option value="">Todos os Meses</option>' + meses.map(m => `<option value="${m}">${m}</option>`).join('');
+            document.getElementById('selSemana').innerHTML = '<option value="">Todas as Semanas</option>' + semanas.map(s => `<option value="${s}">${s}</option>`).join('');
+        }
+
+        function filtrar() {
+            const m = document.getElementById('selMes').value;
+            const s = document.getElementById('selSemana').value;
+            dataFiltrada = rawData.filter(r => (m === "" || r._mes === m) && (s === "" || r._sem === s));
+            render();
+            renderResumo();
+        }
+
+        function render() {
+            Object.values(charts).forEach(c => c.destroy());
+            const group = (k) => dataFiltrada.reduce((a, c) => {
+                const l = c[k] || "N/D";
+                if(!a[l]) a[l] = {p:0, f:0};
+                a[l].p += parseFloat(c.Programado || 0);
+                a[l].f += parseFloat(c.Faturado || 0);
+                return a;
+            }, {});
+
+            const mk = (id, k, hybrid = false) => {
+                const d = group(k);
+                const labels = Object.keys(d);
+                const datasets = [
+                    { 
+                        label: 'Programado', 
+                        data: labels.map(l => d[l].p), 
+                        backgroundColor: 'rgba(30, 58, 138, 0.4)', 
+                        borderColor: '#3B82F6', 
+                        borderWidth: 1.5,
+                        borderRadius: 4
+                    },
+                    { 
+                        label: 'Faturado', 
+                        data: labels.map(l => d[l].f), 
+                        backgroundColor: '#22C55E',
+                        borderRadius: 4
+                    }
+                ];
+
+                if(hybrid) {
+                    datasets.push({
+                        label: 'Aderência %', 
+                        type: 'line', 
+                        borderColor: '#F59E0B', 
+                        borderWidth: 3,
+                        pointBackgroundColor: '#F59E0B',
+                        pointRadius: 5,
+                        yAxisID: 'y1',
+                        data: labels.map(l => d[l].p > 0 ? ((d[l].f/d[l].p)*100).toFixed(1) : 0),
+                        datalabels: { 
+                            display: true,
+                            align: 'right', // AJUSTE PARA NÃO SOBREPOR A LEGENDA
+                            offset: 10,
+                            color: '#F59E0B', 
+                            font: { weight: 'bold', size: 11 }, 
+                            formatter: v => v + '%' 
+                        }
+                    });
+                }
+
+                charts[id] = new Chart(document.getElementById(id), {
+                    type: 'bar',
+                    data: { labels, datasets },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        onClick: (e, el) => { if(el.length) showDrill(labels[el[0].index], k); },
+                        plugins: { 
+                            legend: { 
+                                position: 'top',
+                                labels: { color: '#94A3B8', font: { weight: 'bold' }, padding: 20 } 
+                            },
+                            datalabels: { 
+                                color: '#fff', 
+                                font: { weight: 'bold', size: 10 }, 
+                                formatter: (v, ctx) => (ctx.dataset.type !== 'line' && v > 0) ? Math.round(v) : null 
+                            }
+                        },
+                        scales: {
+                            x: { ticks: { color: '#94A3B8' }, grid: { display: false } },
+                            y: { ticks: { color: '#94A3B8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                            y1: { display: false, min: 0, max: 120 }
+                        }
+                    }
+                });
+            };
+            mk('chartCli', 'Cliente'); mk('chartPla', 'Planta'); mk('chartInc', 'Incoterm', true);
+            mk('chartGer', 'Gerente de Contas'); mk('chartMat', 'Material');
+        }
+
+        function renderResumo() {
+            const d = dataFiltrada.reduce((a, c) => {
+                const l = c['Cliente'] || "N/D";
+                if(!a[l]) a[l] = {p:0, f:0};
+                a[l].p += parseFloat(c.Programado || 0);
+                a[l].f += parseFloat(c.Faturado || 0);
+                return a;
+            }, {});
+
+            document.getElementById('resumoBody').innerHTML = Object.entries(d).map(([name, val]) => {
+                const adr = val.p > 0 ? ((val.f/val.p)*100).toFixed(1) : 0;
+                const saldo = (val.p - val.f).toFixed(1);
+                return `<tr>
+                    <td>${name}</td>
+                    <td>${val.p.toLocaleString()}</td>
+                    <td>${val.f.toLocaleString()}</td>
+                    <td style="color:${saldo > 0 ? '#FCA5A5' : '#86EFAC'}">${saldo}</td>
+                    <td><b>${adr}%</b></td>
+                </tr>`;
+            }).join('');
+        }
+
+        function showDrill(val, field) {
+            const list = dataFiltrada.filter(d => String(d[field]) === String(val));
+            document.getElementById('modalDetails').style.display = 'block';
+            document.getElementById('modalTitle').innerText = `Detalhamento: ${val}`;
+            document.getElementById('drillBody').innerHTML = list.map(r => `
+                <tr>
+                    <td>${r.Cliente}</td>
+                    <td class="td-cidade">${extrairCidade(r.Recebedor)}</td>
+                    <td class="td-cooperado">${r['Nome do Cooperado'] || '-'}</td>
+                    <td>${r.Contrato}</td>
+                    <td>${r.OV}</td>
+                    <td>${r.Material}</td>
+                    <td style="font-weight:bold">${r.Programado}</td>
+                    <td class="td-agendado">${r.Agendado}</td>
+                    <td style="font-weight:bold">${r.Faturado}</td>
+                </tr>
+            `).join('');
+        }
+
+        function extrairCidade(t) {
+            if(!t) return "-";
+            const p = t.split(',');
+            return p[p.length - 1].trim();
+        }
+
+        function exportarExcel() {
+            if(dataFiltrada.length === 0) return alert("Importe dados primeiro!");
+            const ws = XLSX.utils.json_to_sheet(dataFiltrada.map(({_sem, _mes, ...r}) => r));
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Dados_Filtrados");
+            XLSX.writeFile(wb, "Dashboard_Export.xlsx");
+        }
+    </script>
+</body>
+</html>
